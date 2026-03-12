@@ -1,17 +1,20 @@
 // app/_layout.tsx
-import { Stack } from 'expo-router'
+import { Stack } from "expo-router";
+import { Provider as PaperProvider } from "react-native-paper";
 
 const RootLayout = () => {
-    return (
-        <Stack>
-            <Stack.Screen
-                name="(tabs)"
-                options={{
-                    headerShown: false
-                }}
-            />
-        </Stack>
-    )
-}
+  return (
+    <PaperProvider>
+      <Stack>
+        <Stack.Screen
+          name="(tabs)"
+          options={{
+            headerShown: false,
+          }}
+        />
+      </Stack>
+    </PaperProvider>
+  );
+};
 
-export default RootLayout
+export default RootLayout;
