@@ -2,14 +2,18 @@ import { useState, useRef, useEffect } from "react";
 import { View, StyleSheet, TextInput, Pressable } from "react-native";
 import { Text, useTheme, IconButton, Button } from "react-native-paper";
 import { generateRandomWords } from "../../utils/words";
+import { useAuth } from "../../hooks/useAuth";
+import { db } from "../../config/firebase";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 export default function TypingTest() {
+  const { user } = useAuth(); // Get the anonymous user
+
   const [targetText, setTargetText] = useState(() => generateRandomWords());
   const textArray = targetText.split("");
 
   const [userInput, setUserInput] = useState("");
 
-  // 1. New states for tracking time
   const [startTime, setStartTime] = useState<number | null>(null);
   const [endTime, setEndTime] = useState<number | null>(null);
 
@@ -17,48 +21,31 @@ export default function TypingTest() {
   const inputRef = useRef<TextInput>(null);
 
   const focusInput = () => {
-    // Only focus if the test isn't over
     if (!endTime) {
       inputRef.current?.focus();
     }
   };
 
-  // 2. Custom input handler to catch the first keystroke and the last keystroke
   const handleInput = (text: string) => {
-    if (endTime) return; // Prevent typing if test is done
+    if (endTime) return;
 
-    // Start the timer on the very first keystroke
     if (!startTime && text.length === 1) {
       setStartTime(Date.now());
     }
 
     setUserInput(text);
 
-    // End the test when the user types the last character
     if (text.length === textArray.length) {
       setEndTime(Date.now());
     }
   };
 
-  const resetTest = () => {
-    setUserInput("");
-    setTargetText(generateRandomWords());
-    setStartTime(null);
-    setEndTime(null);
-
-    // Slight delay to ensure the input is rendered before focusing
-    setTimeout(() => {
-      focusInput();
-    }, 100);
-  };
-
-  // 3. Helper to calculate WPM and Accuracy
+  // Helper to calculate WPM and Accuracy
   const calculateResults = () => {
     if (!startTime || !endTime) return { wpm: 0, accuracy: 0 };
 
     const timeInMinutes = (endTime - startTime) / 60000;
 
-    // Calculate how many characters were correct
     let correctChars = 0;
     for (let i = 0; i < textArray.length; i++) {
       if (userInput[i] === textArray[i]) {
@@ -66,12 +53,45 @@ export default function TypingTest() {
       }
     }
 
-    // Standard WPM formula: (total characters / 5) / time in minutes
-    // We use total textArray length because finishing implies they typed everything
     const wpm = Math.round(textArray.length / 5 / timeInMinutes);
     const accuracy = Math.round((correctChars / textArray.length) * 100);
 
     return { wpm, accuracy };
+  };
+
+  // 1. Save the score to Firebase when the test ends
+  useEffect(() => {
+    const saveScore = async () => {
+      // Only save if the test is done and we have a valid logged-in user
+      if (endTime && user) {
+        const { wpm, accuracy } = calculateResults();
+
+        try {
+          await addDoc(collection(db, "scores"), {
+            uid: user.uid, // Tie the score to this anonymous user
+            wpm: wpm,
+            accuracy: accuracy,
+            createdAt: serverTimestamp(), // Use Firebase's server time
+          });
+          console.log("Score saved successfully!");
+        } catch (error) {
+          console.error("Error saving score: ", error);
+        }
+      }
+    };
+
+    saveScore();
+  }, [endTime]); // This effect runs every time 'endTime' changes
+
+  const resetTest = () => {
+    setUserInput("");
+    setTargetText(generateRandomWords());
+    setStartTime(null);
+    setEndTime(null);
+
+    setTimeout(() => {
+      focusInput();
+    }, 100);
   };
 
   // 4. Render the Results Screen if the test is finished
