@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { View, StyleSheet, ScrollView } from "react-native";
 import {
   Text,
@@ -8,11 +8,17 @@ import {
   ActivityIndicator,
   Divider,
 } from "react-native-paper";
+// useFocusEffect is a specialized hook for mobile navigation.
+// It runs every time this specific tab/screen comes into the user's view.
+import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../../../hooks/useAuth";
 import { db } from "../../../config/firebase";
 import { collection, query, where, getDocs } from "firebase/firestore";
 
-// Helper component for displaying a stat box
+/**
+ * Helper component: StatBox
+ * Displays a single metric (like WPM) with a label and a bold colored value.
+ */
 const StatBox = ({
   label,
   value,
@@ -33,10 +39,15 @@ const StatBox = ({
 );
 
 export default function ProfileScreen() {
+  // Grab the current user session
   const { user } = useAuth();
+  // Grab the Material You theme
   const theme = useTheme();
 
+  // STATE: loading tracks if we are currently talking to the database
   const [loading, setLoading] = useState(true);
+
+  // STATE: stats holds the aggregated math for the user's typing history
   const [stats, setStats] = useState({
     testsCompleted: 0,
     highestWpm: 0,
@@ -44,48 +55,70 @@ export default function ProfileScreen() {
     averageAccuracy: 0,
   });
 
-  useEffect(() => {
-    const fetchUserStats = async () => {
-      if (!user) return;
+  /**
+   * HOOK: useFocusEffect
+   * Why not useEffect?
+   * In tab navigation, screens stay "alive" in the background. useEffect only runs once.
+   * useFocusEffect runs every time you click the "Profile" tab, ensuring scores
+   * from the most recent test are included.
+   */
+  useFocusEffect(
+    // We wrap our logic in useCallback to prevent unnecessary re-runs
+    useCallback(() => {
+      const fetchUserStats = async () => {
+        if (!user) return;
 
-      try {
-        // 1. Query the database for ONLY this user's scores
-        const q = query(collection(db, "scores"), where("uid", "==", user.uid));
-        const querySnapshot = await getDocs(q);
+        try {
+          // 1. Query Firestore for every document in "scores" that belongs to this user's UID
+          const q = query(
+            collection(db, "scores"),
+            where("uid", "==", user.uid),
+          );
+          const querySnapshot = await getDocs(q);
 
-        let highestWpm = 0;
-        let totalWpm = 0;
-        let totalAccuracy = 0;
-        const testsCompleted = querySnapshot.size;
+          let highestWpm = 0;
+          let totalWpm = 0;
+          let totalAccuracy = 0;
+          const testsCompleted = querySnapshot.size;
 
-        // 2. Loop through all their scores to calculate aggregates
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
+          // 2. Loop through every score document found
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
 
-          if (data.wpm > highestWpm) highestWpm = data.wpm;
-          totalWpm += data.wpm;
-          totalAccuracy += data.accuracy;
-        });
+            // Track the single highest WPM seen
+            if (data.wpm > highestWpm) highestWpm = data.wpm;
 
-        // 3. Update the local state with the math
-        setStats({
-          testsCompleted,
-          highestWpm,
-          averageWpm:
-            testsCompleted > 0 ? Math.round(totalWpm / testsCompleted) : 0,
-          averageAccuracy:
-            testsCompleted > 0 ? Math.round(totalAccuracy / testsCompleted) : 0,
-        });
-      } catch (error) {
-        console.error("Error fetching stats:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+            // Add to totals for average calculation
+            totalWpm += data.wpm;
+            totalAccuracy += data.accuracy;
+          });
 
-    fetchUserStats();
-  }, [user]);
+          // 3. Perform the math and update the UI state
+          setStats({
+            testsCompleted,
+            highestWpm,
+            averageWpm:
+              testsCompleted > 0 ? Math.round(totalWpm / testsCompleted) : 0,
+            averageAccuracy:
+              testsCompleted > 0
+                ? Math.round(totalAccuracy / testsCompleted)
+                : 0,
+          });
+        } catch (error) {
+          console.error("Error fetching stats:", error);
+        } finally {
+          setLoading(false);
+        }
+      };
 
+      fetchUserStats();
+
+      // No cleanup needed for this specific effect
+      return () => {};
+    }, [user]), // Re-run if the user object changes
+  );
+
+  // Loading State UI: Show a spinner while the database query is running
   if (loading) {
     return (
       <View
@@ -103,7 +136,7 @@ export default function ProfileScreen() {
     <ScrollView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
     >
-      {/* 4. Top Profile Section */}
+      {/* HEADER SECTION: User identity information */}
       <View style={styles.header}>
         <Avatar.Icon
           size={80}
@@ -128,7 +161,7 @@ export default function ProfileScreen() {
 
       <Divider style={styles.divider} />
 
-      {/* 5. Statistics Grid */}
+      {/* STATISTICS GRID: A 2x2 layout of Material Cards */}
       <Text
         variant="titleLarge"
         style={[styles.sectionTitle, { color: theme.colors.onSurface }]}
