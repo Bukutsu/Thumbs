@@ -22,19 +22,29 @@ const TIMER_DURATION = 60;
 const TypingTest = () => {
   const theme = useTheme();
 
-  const generateWords = useCallback((count: number = 50) => {
+  const generateWords = useCallback((): string[] => {
     const shuffled = [...WORDS].sort(() => Math.random() - 0.5);
     const selected: string[] = [];
     let i = 0;
-    while (selected.join(" ").length < count * 5 && i < shuffled.length) {
+    while (selected.join(" ").length < 250 && i < shuffled.length) {
       selected.push(shuffled[i % shuffled.length]);
       i++;
     }
-    return selected.join(" ");
+    return selected;
   }, []);
 
   // --- State ---
-  const [targetText, setTargetText] = useState(() => generateWords(50));
+  const [targetWords, setTargetWords] = useState<string[]>(() => {
+    const shuffled = [...WORDS].sort(() => Math.random() - 0.5);
+    const selected: string[] = [];
+    let i = 0;
+    while (selected.join(" ").length < 250 && i < shuffled.length) {
+      selected.push(shuffled[i % shuffled.length]);
+      i++;
+    }
+    return selected;
+  });
+  const targetText = targetWords.join(" ");
   const [userInput, setUserInput] = useState("");
   const [characterStates, setCharacterStates] = useState<CharacterState[]>([]);
   const [testStatus, setTestStatus] = useState<TestStatus>("idle");
@@ -75,20 +85,24 @@ const TypingTest = () => {
     setIncorrectCount(incorrect);
   }, [userInput, targetText]);
 
-  // --- Live WPM while running ---
+  // --- Live WPM/Accuracy every 500ms while running ---
   useEffect(() => {
-    if (testStatus !== "running" || !startTimeRef.current) return;
-    const elapsed = (Date.now() - startTimeRef.current) / 1000;
-    if (elapsed > 0) {
-      const liveWpm = Math.round((correctCount / 5) / (elapsed / 60));
-      const liveAccuracy =
-        userInput.length > 0
-          ? Math.round((correctCount / userInput.length) * 100)
-          : 100;
-      setWpm(Math.max(0, liveWpm));
-      setAccuracy(Math.max(0, Math.min(100, liveAccuracy)));
-    }
-  }, [timeRemaining, testStatus, correctCount, userInput]);
+    if (testStatus !== "running") return;
+    const statsInterval = setInterval(() => {
+      if (!startTimeRef.current) return;
+      const elapsed = (Date.now() - startTimeRef.current) / 1000;
+      if (elapsed > 0) {
+        const liveWpm = Math.round((correctCount / 5) / (elapsed / 60));
+        const liveAccuracy =
+          userInput.length > 0
+            ? Math.round((correctCount / userInput.length) * 100)
+            : 100;
+        setWpm(Math.max(0, liveWpm));
+        setAccuracy(Math.max(0, Math.min(100, liveAccuracy)));
+      }
+    }, 500);
+    return () => clearInterval(statsInterval);
+  }, [testStatus, correctCount, userInput]);
 
   // --- Finish test and compute final stats ---
   const finishTest = useCallback(() => {
@@ -177,7 +191,7 @@ const TypingTest = () => {
     setWpm(0);
     setAccuracy(100);
     startTimeRef.current = null;
-    setTargetText(generateWords(50));
+    setTargetWords(generateWords());
     inputRef.current?.focus();
   };
 
@@ -218,6 +232,29 @@ const TypingTest = () => {
     );
   };
 
+  const renderWords = () => {
+    let charOffset = 0;
+    return targetWords.map((word, wordIdx) => {
+      const wordChars = word.split("").map((char, charIdx) => {
+        const globalIdx = charOffset + charIdx;
+        return renderCharacter(char, globalIdx);
+      });
+      const spaceIdx = charOffset + word.length;
+      const spaceState = characterStates[spaceIdx] || "untyped";
+      let spaceStyle: object = { color: theme.colors.onSurfaceVariant };
+      if (spaceState === "correct") spaceStyle = { color: theme.colors.primary };
+      else if (spaceState === "incorrect") spaceStyle = { color: theme.colors.error, backgroundColor: theme.colors.error + "20" };
+      else if (spaceState === "current") spaceStyle = { backgroundColor: theme.colors.primaryContainer };
+      charOffset = spaceIdx + 1;
+      return (
+        <View key={wordIdx} style={styles.wordGroup}>
+          {wordChars}
+          <Text style={[styles.char, spaceStyle]}> </Text>
+        </View>
+      );
+    });
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -249,7 +286,7 @@ const TypingTest = () => {
             keyboardShouldPersistTaps="handled"
           >
             <View style={styles.wordsContainer}>
-              {targetText.split("").map((char, idx) => renderCharacter(char, idx))}
+              {renderWords()}
             </View>
           </ScrollView>
 
@@ -351,7 +388,10 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     alignItems: "center",
     alignContent: "center",
-    gap: 4,
+  },
+  wordGroup: {
+    flexDirection: "row",
+    marginRight: 2,
   },
   char: {
     fontSize: 22,
