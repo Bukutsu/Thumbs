@@ -10,15 +10,13 @@ import {
   ScrollView,
   Animated,
 } from "react-native";
-import { useTheme } from "react-native-paper";
+import { useTheme, SegmentedButtons } from "react-native-paper";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WORDS } from "../../utils/words";
 
 type CharacterState = "correct" | "incorrect" | "current" | "untyped";
 type TestStatus = "idle" | "running" | "finished";
-
-const TIMER_DURATION = 60;
 
 const TypingTest = () => {
   const theme = useTheme();
@@ -43,16 +41,24 @@ const TypingTest = () => {
   }, []);
 
   // --- State ---
+  const [testDuration, setTestDuration] = useState(60);
   const [targetWords, setTargetWords] = useState<string[]>(() => generateWords());
   const targetText = targetWords.join(" ");
   const [userInput, setUserInput] = useState("");
   const [characterStates, setCharacterStates] = useState<CharacterState[]>([]);
   const [testStatus, setTestStatus] = useState<TestStatus>("idle");
-  const [timeRemaining, setTimeRemaining] = useState(TIMER_DURATION);
+  const [timeRemaining, setTimeRemaining] = useState(testDuration);
   const [correctCount, setCorrectCount] = useState(0);
   const [incorrectCount, setIncorrectCount] = useState(0);
   const [wpm, setWpm] = useState(0);
   const [accuracy, setAccuracy] = useState(100);
+
+  // Update timeRemaining when testDuration changes (only in idle)
+  useEffect(() => {
+    if (testStatus === "idle") {
+      setTimeRemaining(testDuration);
+    }
+  }, [testDuration, testStatus]);
 
   // --- Refs ---
   const inputRef = useRef<TextInput>(null);
@@ -243,7 +249,7 @@ const TypingTest = () => {
     setUserInput("");
     setCharacterStates([]);
     setTestStatus("idle");
-    setTimeRemaining(TIMER_DURATION);
+    setTimeRemaining(testDuration);
     setCorrectCount(0);
     setIncorrectCount(0);
     setWpm(0);
@@ -355,6 +361,22 @@ const TypingTest = () => {
       style={[styles.container, { backgroundColor: theme.colors.background }]}
     >
       <SafeAreaView style={styles.container}>
+        {testStatus === "idle" && (
+          <View style={styles.durationSelector}>
+            <SegmentedButtons
+              value={testDuration.toString()}
+              onValueChange={(val) => setTestDuration(parseInt(val))}
+              buttons={[
+                { value: "15", label: "15s" },
+                { value: "30", label: "30s" },
+                { value: "60", label: "60s" },
+              ]}
+              style={styles.segmentedButtons}
+              density="medium"
+            />
+          </View>
+        )}
+
         <View style={styles.statsBar}>
           <View style={styles.statItem}>
             <Text style={[styles.statLabel, { color: theme.colors.onSurfaceVariant }]}>Time</Text>
@@ -447,6 +469,15 @@ const TypingTest = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  durationSelector: {
+    paddingHorizontal: 40,
+    paddingTop: 8,
+    paddingBottom: 4,
+    alignItems: "center",
+  },
+  segmentedButtons: {
+    maxWidth: 300,
   },
   statsBar: {
     flexDirection: "row",
