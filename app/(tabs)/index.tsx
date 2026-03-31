@@ -8,6 +8,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Animated,
 } from "react-native";
 import { useTheme } from "react-native-paper";
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -23,27 +24,23 @@ const TypingTest = () => {
   const theme = useTheme();
 
   const generateWords = useCallback((): string[] => {
-    const shuffled = [...WORDS].sort(() => Math.random() - 0.5);
     const selected: string[] = [];
-    let i = 0;
-    while (selected.join(" ").length < 250 && i < shuffled.length) {
-      selected.push(shuffled[i % shuffled.length]);
-      i++;
+    let lastIndex = -1;
+    const targetCount = 50;
+
+    for (let i = 0; i < targetCount; i++) {
+      let idx = Math.floor(Math.random() * WORDS.length);
+      while (idx === lastIndex && WORDS.length > 1) {
+        idx = Math.floor(Math.random() * WORDS.length);
+      }
+      selected.push(WORDS[idx]);
+      lastIndex = idx;
     }
     return selected;
   }, []);
 
   // --- State ---
-  const [targetWords, setTargetWords] = useState<string[]>(() => {
-    const shuffled = [...WORDS].sort(() => Math.random() - 0.5);
-    const selected: string[] = [];
-    let i = 0;
-    while (selected.join(" ").length < 250 && i < shuffled.length) {
-      selected.push(shuffled[i % shuffled.length]);
-      i++;
-    }
-    return selected;
-  });
+  const [targetWords, setTargetWords] = useState<string[]>(generateWords);
   const targetText = targetWords.join(" ");
   const [userInput, setUserInput] = useState("");
   const [characterStates, setCharacterStates] = useState<CharacterState[]>([]);
@@ -57,6 +54,63 @@ const TypingTest = () => {
   const inputRef = useRef<TextInput>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number | null>(null);
+  const cursorOpacity = useRef(new Animated.Value(1)).current;
+  const scrollViewRef = useRef<ScrollView>(null);
+  const wordYPositions = useRef<{ [key: number]: number }>({});
+
+  const getCurrentWordIndex = useCallback(() => {
+    let charOffset = 0;
+    for (let i = 0; i < targetWords.length; i++) {
+      const wordLength = targetWords[i].length + 1; // +1 for space
+      if (userInput.length >= charOffset && userInput.length < charOffset + wordLength) {
+        return i;
+      }
+      charOffset += wordLength;
+    }
+    return Math.max(0, targetWords.length - 1);
+  }, [targetWords, userInput]);
+
+  // --- Auto-scroll effect ---
+  useEffect(() => {
+    if (testStatus !== "running") return;
+
+    const currentWordIdx = getCurrentWordIndex();
+    const targetY = wordYPositions.current[currentWordIdx];
+
+    if (targetY !== undefined && scrollViewRef.current) {
+      scrollViewRef.current.scrollTo({
+        y: Math.max(0, targetY - 100), // 100px from top for comfort
+        animated: true,
+      });
+    }
+  }, [userInput, testStatus, getCurrentWordIndex]);
+
+  // --- Cursor blinking animation ---
+  useEffect(() => {
+    if (testStatus !== "running") {
+      cursorOpacity.setValue(0);
+      return;
+    }
+
+    cursorOpacity.setValue(1);
+    const blinkAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(cursorOpacity, {
+          toValue: 0,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cursorOpacity, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    blinkAnimation.start();
+    return () => blinkAnimation.stop();
+  }, [testStatus]);
 
   // --- Compute character states whenever userInput changes ---
   useEffect(() => {
@@ -215,8 +269,7 @@ const TypingTest = () => {
       case "current":
         charStyle = {
           color: theme.colors.onSurface,
-          backgroundColor: theme.colors.primaryContainer,
-          borderRadius: 2,
+          fontWeight: "600",
         };
         break;
       case "untyped":
@@ -237,18 +290,56 @@ const TypingTest = () => {
     return targetWords.map((word, wordIdx) => {
       const wordChars = word.split("").map((char, charIdx) => {
         const globalIdx = charOffset + charIdx;
-        return renderCharacter(char, globalIdx);
+        const showCursor = globalIdx === userInput.length;
+
+        return (
+          <View key={charIdx} style={styles.charWithCursor}>
+            {showCursor && (
+              <Animated.View
+                style={[
+                  styles.cursor,
+                  {
+                    backgroundColor: theme.colors.primary,
+                    opacity: cursorOpacity,
+                  },
+                ]}
+              />
+            )}
+            {renderCharacter(char, globalIdx)}
+          </View>
+        );
       });
+
       const spaceIdx = charOffset + word.length;
       const spaceState = characterStates[spaceIdx] || "untyped";
       let spaceStyle: object = { color: theme.colors.onSurfaceVariant };
       if (spaceState === "correct") spaceStyle = { color: theme.colors.primary };
       else if (spaceState === "incorrect") spaceStyle = { color: theme.colors.error, backgroundColor: theme.colors.error + "20" };
-      else if (spaceState === "current") spaceStyle = { backgroundColor: theme.colors.primaryContainer };
+
+      const cursorOnSpace = spaceIdx === userInput.length;
       charOffset = spaceIdx + 1;
+
       return (
-        <View key={wordIdx} style={styles.wordGroup}>
+        <View
+          key={wordIdx}
+          style={styles.wordGroup}
+          onLayout={(event) => {
+            const { y } = event.nativeEvent.layout;
+            wordYPositions.current[wordIdx] = y;
+          }}
+        >
           {wordChars}
+          {cursorOnSpace && (
+            <Animated.View
+              style={[
+                styles.cursor,
+                {
+                  backgroundColor: theme.colors.primary,
+                  opacity: cursorOpacity,
+                },
+              ]}
+            />
+          )}
           <Text style={[styles.char, spaceStyle]}> </Text>
         </View>
       );
@@ -280,6 +371,7 @@ const TypingTest = () => {
 
         <Pressable style={styles.typingArea} onPress={handlePress}>
           <ScrollView
+            ref={scrollViewRef}
             style={styles.scrollArea}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
@@ -392,6 +484,17 @@ const styles = StyleSheet.create({
   wordGroup: {
     flexDirection: "row",
     marginRight: 2,
+  },
+  charWithCursor: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  cursor: {
+    width: 2,
+    height: 24,
+    borderRadius: 1,
+    marginRight: 0,
+    marginLeft: 0,
   },
   char: {
     fontSize: 22,
