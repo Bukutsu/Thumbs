@@ -2,31 +2,39 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, SegmentedButtons, useTheme } from 'react-native-paper';
+import { Button, Card, SegmentedButtons, useTheme, Chip } from 'react-native-paper';
 import { getLeaderboard } from '../../../utils/dataManager';
-import { LeaderboardEntry, LeaderboardPeriod } from '../../../types';
+import { LeaderboardEntry, LeaderboardPeriod, TestDurationFilter } from '../../../types';
 
 const periodButtons = [
   { value: 'today', label: 'Today' },
-  { value: 'week', label: 'This Week' },
+  { value: 'week', label: 'Week' },
   { value: 'all', label: 'All Time' },
+];
+
+const durationButtons = [
+  { value: 'all', label: 'Any' },
+  { value: 15, label: '15s' },
+  { value: 30, label: '30s' },
+  { value: 60, label: '60s' },
 ];
 
 const LeaderboardScreen = () => {
   const theme = useTheme();
   const [period, setPeriod] = useState<LeaderboardPeriod>('all');
+  const [duration, setDuration] = useState<TestDurationFilter>('all');
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadLeaderboard = useCallback(async () => {
     setLoading(true);
     try {
-      const nextEntries = await getLeaderboard(period);
+      const nextEntries = await getLeaderboard(period, duration);
       setEntries(nextEntries);
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [period, duration]);
 
   useFocusEffect(
     useCallback(() => {
@@ -55,7 +63,21 @@ const LeaderboardScreen = () => {
           value={period}
           onValueChange={(value) => setPeriod(value as LeaderboardPeriod)}
           buttons={periodButtons}
+          style={styles.periodButtons}
         />
+        <View style={styles.durationRow}>
+          {durationButtons.map((btn) => (
+            <Chip
+              key={btn.value}
+              selected={duration === btn.value}
+              onPress={() => setDuration(btn.value as TestDurationFilter)}
+              style={styles.durationChip}
+              showSelectedOverlay
+            >
+              {btn.label}
+            </Chip>
+          ))}
+        </View>
       </View>
 
       {loading ? (
@@ -140,6 +162,17 @@ const styles = StyleSheet.create({
   filterContainer: {
     paddingHorizontal: 20,
     paddingVertical: 12,
+  },
+  periodButtons: {
+    marginBottom: 8,
+  },
+  durationRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  durationChip: {
+    height: 32,
   },
   loadingContainer: {
     flex: 1,

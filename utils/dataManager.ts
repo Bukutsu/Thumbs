@@ -12,7 +12,7 @@ import {
   getDocs 
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LeaderboardEntry, LeaderboardPeriod, TestResult, UserProfile, UserStats } from '../types';
+import { LeaderboardEntry, LeaderboardPeriod, TestResult, UserProfile, UserStats, TestDurationFilter, ProgressDataPoint } from '../types';
 
 const STORAGE_KEY = '@thumbs_test_results';
 const USER_PROFILE_STORAGE_KEY = '@thumbs_user_profiles';
@@ -295,13 +295,20 @@ export const updateUserDisplayName = async (
   }
 };
 
-export const getLeaderboard = async (period: LeaderboardPeriod): Promise<LeaderboardEntry[]> => {
+export const getLeaderboard = async (
+  period: LeaderboardPeriod,
+  duration: TestDurationFilter = 'all'
+): Promise<LeaderboardEntry[]> => {
   const startTimestamp = getPeriodStartTimestamp(period);
 
   try {
     const constraints: QueryConstraint[] = [];
     if (startTimestamp !== null) {
       constraints.push(where('timestamp', '>=', startTimestamp));
+    }
+
+    if (duration !== 'all') {
+      constraints.push(where('testDuration', '==', duration));
     }
 
     const leaderboardQuery = query(collection(db, 'testResults'), ...constraints);
@@ -377,6 +384,51 @@ export const getLeaderboard = async (period: LeaderboardPeriod): Promise<Leaderb
     return entries.slice(0, LEADERBOARD_LIMIT);
   } catch (error) {
     console.error('Failed to fetch leaderboard from Firestore:', error);
+    return [];
+  }
+};
+
+export const getProgressData = async (
+  userId: string,
+  days: number = 14
+): Promise<ProgressDataPoint[]> => {
+  const startDate = Date.now() - days * 24 * 60 * 60 * 1000;
+
+  try {
+    const q = query(
+      collection(db, 'testResults'),
+      where('userId', '==', userId),
+      where('timestamp', '>=', startDate)
+    );
+
+    const snapshot = await getDocs(q);
+    const results: TestResult[] = [];
+    snapshot.forEach((doc) => {
+      results.push({ id: doc.id, ...doc.data() } as TestResult);
+    });
+
+    // Group by day and calculate average WPM
+    const byDay = new Map<string, number[]>();
+    results.forEach((r) => {
+      const date = new Date(r.timestamp);
+      const key = `${date.getMonth() + 1}/${date.getDate()}`;
+      if (!byDay.has(key)) byDay.set(key, []);
+      byDay.get(key)!.push(r.wpm);
+    });
+
+    const data: ProgressDataPoint[] = [];
+    const now = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const key = `${d.getMonth() + 1}/${d.getDate()}`;
+      const wpms = byDay.get(key) || [];
+      const avgWpm = wpms.length > 0 ? Math.round(wpms.reduce((a, b) => a + b, 0) / wpms.length) : 0;
+      data.push({ date: key, wpm: avgWpm });
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Failed to fetch progress data:', error);
     return [];
   }
 };

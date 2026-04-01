@@ -5,8 +5,12 @@ import { useState, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../../hooks/useAuth';
-import { getGuestStats, getUserProfile, getUserStats, updateUserDisplayName } from '../../../utils/dataManager';
-import { UserProfile, UserStats } from '../../../types';
+import { getGuestStats, getUserProfile, getUserStats, updateUserDisplayName, getProgressData } from '../../../utils/dataManager';
+import { UserProfile, UserStats, ProgressDataPoint } from '../../../types';
+import { LineChart } from 'react-native-gifted-charts';
+import { Dimensions } from 'react-native';
+
+const screenWidth = Dimensions.get('window').width;
 
 const ProfileScreen = () => {
   const theme = useTheme();
@@ -14,6 +18,7 @@ const ProfileScreen = () => {
   const { user, loading: authLoading, isAnonymous, signOut } = useAuth();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [progressData, setProgressData] = useState<ProgressDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<'cloud' | 'local'>('cloud');
   const [editingName, setEditingName] = useState(false);
@@ -31,13 +36,15 @@ const ProfileScreen = () => {
         setDisplayNameInput('Anonymous User');
         setSyncStatus('local');
       } else {
-        const [userStats, userProfile] = await Promise.all([
+        const [userStats, userProfile, userProgress] = await Promise.all([
           getUserStats(user.uid),
           getUserProfile(user.uid, isAnonymous),
+          getProgressData(user.uid, 7),
         ]);
 
         setStats(userStats);
         setProfile(userProfile);
+        setProgressData(userProgress);
         setDisplayNameInput(userProfile.displayName);
         setSyncStatus('cloud');
       }
@@ -216,6 +223,36 @@ const ProfileScreen = () => {
           </Card>
         </View>
 
+        {/* Progress Chart */}
+        {user && progressData.some(d => d.wpm > 0) && (
+          <View style={styles.chartSection}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>
+              WPM Progress (Last 7 Days)
+            </Text>
+            <Card style={[styles.chartCard, { backgroundColor: theme.colors.surface }]}>
+              <Card.Content>
+                <LineChart
+                  data={progressData.map(d => ({ value: d.wpm, label: d.date }))}
+                  height={120}
+                  width={screenWidth - 80}
+                  initialSpacing={20}
+                  color={theme.colors.primary}
+                  thickness={3}
+                  dataPointsColor={theme.colors.primary}
+                  hideRules
+                  hideYAxisText
+                  yAxisThickness={0}
+                  xAxisThickness={0}
+                  xAxisLabelTextStyle={{ color: theme.colors.onSurfaceVariant, fontSize: 10 }}
+                  curved
+                  animateOnDataChange
+                  isAnimated
+                />
+              </Card.Content>
+            </Card>
+          </View>
+        )}
+
         {/* Recent Tests */}
         <View style={styles.recentSection}>
           <Text style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>
@@ -357,6 +394,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 12,
+  },
+  chartSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  chartCard: {
+    borderRadius: 16,
+    paddingVertical: 10,
   },
   testCard: {
     marginBottom: 12,

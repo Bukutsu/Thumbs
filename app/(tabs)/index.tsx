@@ -10,18 +10,20 @@ import {
   ScrollView,
   Animated,
 } from "react-native";
-import { useTheme, SegmentedButtons } from "react-native-paper";
+import { useTheme as usePaperTheme, SegmentedButtons } from "react-native-paper";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WORDS } from "../../utils/words";
 import { useAuth } from "../../hooks/useAuth";
 import { saveTestResult } from "../../utils/dataManager";
+import { useTheme } from "../../contexts/ThemeContext";
 
 type CharacterState = "correct" | "incorrect" | "current" | "untyped";
 type TestStatus = "idle" | "running" | "finished";
 
 const TypingTest = () => {
-  const theme = useTheme();
+  const paperTheme = usePaperTheme();
+  const { fontSizeValue } = useTheme();
 
   const generateWords = useCallback((): string[] => {
     const selected: string[] = [];
@@ -311,21 +313,21 @@ const TypingTest = () => {
 
     switch (state) {
       case "correct":
-        charStyle = { color: theme.colors.primary };
+        charStyle = { color: paperTheme.colors.primary };
         break;
       case "incorrect":
-        charStyle = { color: theme.colors.error, textDecorationLine: "underline" };
+        charStyle = { color: paperTheme.colors.error, textDecorationLine: "underline" };
         // Add background for spaces to make them visible when incorrect
         if (char === " ") {
-          wrapperStyle = { backgroundColor: theme.colors.error + "20" };
+          wrapperStyle = { backgroundColor: paperTheme.colors.error + "20" };
         }
         break;
       case "current":
-        charStyle = { color: theme.colors.onSurface };
+        charStyle = { color: paperTheme.colors.onSurface };
         break;
       case "untyped":
       default:
-        charStyle = { color: theme.colors.onSurfaceVariant };
+        charStyle = { color: paperTheme.colors.onSurfaceVariant };
         break;
     }
 
@@ -338,13 +340,13 @@ const TypingTest = () => {
             style={[
               styles.cursor,
               {
-                backgroundColor: theme.colors.primary,
+                backgroundColor: paperTheme.colors.primary,
                 opacity: cursorOpacity,
               },
             ]}
           />
         )}
-        <Text style={[styles.char, charStyle]}>{char}</Text>
+        <Text style={[styles.char, charStyle, { fontSize: fontSizeValue, lineHeight: fontSizeValue * 1.45 }]}>{char}</Text>
       </View>
     );
   };
@@ -378,7 +380,7 @@ const TypingTest = () => {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      style={[styles.container, { backgroundColor: paperTheme.colors.background }]}
     >
       <SafeAreaView style={styles.container}>
         {testStatus === "idle" && (
@@ -399,18 +401,18 @@ const TypingTest = () => {
 
         <View style={styles.statsBar}>
           <View style={styles.statItem}>
-            <Text style={[styles.statLabel, { color: theme.colors.onSurfaceVariant }]}>Time</Text>
-            <Text style={[styles.statValue, { color: theme.colors.onSurface }]}>
+            <Text style={[styles.statLabel, { color: paperTheme.colors.onSurfaceVariant }]}>Time</Text>
+            <Text style={[styles.statValue, { color: paperTheme.colors.onSurface }]}>
               {timeRemaining}s
             </Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statLabel, { color: theme.colors.onSurfaceVariant }]}>WPM</Text>
-            <Text style={[styles.statValue, { color: theme.colors.primary }]}>{wpm}</Text>
+            <Text style={[styles.statLabel, { color: paperTheme.colors.onSurfaceVariant }]}>WPM</Text>
+            <Text style={[styles.statValue, { color: paperTheme.colors.primary }]}>{wpm}</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statLabel, { color: theme.colors.onSurfaceVariant }]}>Accuracy</Text>
-            <Text style={[styles.statValue, { color: theme.colors.primary }]}>{accuracy}%</Text>
+            <Text style={[styles.statLabel, { color: paperTheme.colors.onSurfaceVariant }]}>Accuracy</Text>
+            <Text style={[styles.statValue, { color: paperTheme.colors.primary }]}>{accuracy}%</Text>
           </View>
         </View>
 
@@ -442,39 +444,39 @@ const TypingTest = () => {
 
         {testStatus === "finished" && (
           <View style={styles.overlay}>
-            <View style={[styles.resultsCard, { backgroundColor: theme.colors.surface }]}>
-              <Text style={[styles.resultsTitle, { color: theme.colors.onSurface }]}>
+            <View style={[styles.resultsCard, { backgroundColor: paperTheme.colors.surface }]}>
+              <Text style={[styles.resultsTitle, { color: paperTheme.colors.onSurface }]}>
                 Test Complete!
               </Text>
               <View style={styles.resultsRow}>
                 <View style={styles.resultItem}>
-                  <Text style={[styles.resultValue, { color: theme.colors.primary }]}>{wpm}</Text>
-                  <Text style={[styles.resultLabel, { color: theme.colors.onSurfaceVariant }]}>
+                  <Text style={[styles.resultValue, { color: paperTheme.colors.primary }]}>{wpm}</Text>
+                  <Text style={[styles.resultLabel, { color: paperTheme.colors.onSurfaceVariant }]}>
                     WPM
                   </Text>
                 </View>
                 <View style={styles.resultItem}>
-                  <Text style={[styles.resultValue, { color: theme.colors.primary }]}>
+                  <Text style={[styles.resultValue, { color: paperTheme.colors.primary }]}>
                     {accuracy}%
                   </Text>
-                  <Text style={[styles.resultLabel, { color: theme.colors.onSurfaceVariant }]}>
+                  <Text style={[styles.resultLabel, { color: paperTheme.colors.onSurfaceVariant }]}>
                     Accuracy
                   </Text>
                 </View>
                 <View style={styles.resultItem}>
-                  <Text style={[styles.resultValue, { color: theme.colors.error }]}>
+                  <Text style={[styles.resultValue, { color: paperTheme.colors.error }]}>
                     {incorrectCount}
                   </Text>
-                  <Text style={[styles.resultLabel, { color: theme.colors.onSurfaceVariant }]}>
+                  <Text style={[styles.resultLabel, { color: paperTheme.colors.onSurfaceVariant }]}>
                     Errors
                   </Text>
                 </View>
               </View>
               <Pressable
-                style={[styles.restartButton, { backgroundColor: theme.colors.primary }]}
+                style={[styles.restartButton, { backgroundColor: paperTheme.colors.primary }]}
                 onPress={handleRestart}
               >
-                <Text style={[styles.restartButtonText, { color: theme.colors.onPrimary }]}>
+                <Text style={[styles.restartButtonText, { color: paperTheme.colors.onPrimary }]}>
                   Try Again
                 </Text>
               </Pressable>

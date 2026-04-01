@@ -36,3 +36,10 @@ export interface LeaderboardEntry {
   bestAccuracy: number;
   timestamp: number;
 }
+
+export type TestDurationFilter = 15 | 30 | 60 | 'all';
+
+export interface ProgressDataPoint {
+  date: string;
+  wpm: number;
+}
