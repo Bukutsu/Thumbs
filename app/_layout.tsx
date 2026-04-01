@@ -12,6 +12,13 @@ const RootLayout = () => {
             headerShown: false,
           }}
         />
+        <Stack.Screen
+          name="login"
+          options={{
+            headerShown: false,
+            presentation: "card",
+          }}
+        />
       </Stack>
     </PaperProvider>
   );
