@@ -43,3 +43,6 @@ yarn-error.*
 # AI
 GEMINI.md
 AGENTS.md
+
+# Private keys
+private-keys/

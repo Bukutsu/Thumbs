@@ -14,6 +14,8 @@ import { useTheme, SegmentedButtons } from "react-native-paper";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { WORDS } from "../../utils/words";
+import { useAuth } from "../../hooks/useAuth";
+import { saveTestResult } from "../../utils/dataManager";
 
 type CharacterState = "correct" | "incorrect" | "current" | "untyped";
 type TestStatus = "idle" | "running" | "finished";
@@ -40,6 +42,9 @@ const TypingTest = () => {
     return selected;
   }, []);
 
+  // --- Auth ---
+  const { user, isAnonymous } = useAuth();
+
   // --- State ---
   const [testDuration, setTestDuration] = useState(60);
   const [targetWords, setTargetWords] = useState<string[]>(() => generateWords());
@@ -57,6 +62,7 @@ const TypingTest = () => {
   useEffect(() => {
     if (testStatus === "idle") {
       setTimeRemaining(testDuration);
+      lastDisplayedSecondRef.current = testDuration;
     }
   }, [testDuration, testStatus]);
 
@@ -64,9 +70,14 @@ const TypingTest = () => {
   const inputRef = useRef<TextInput>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number | null>(null);
+  const endTimeRef = useRef<number | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const wordYPositions = useRef<{ [key: number]: number }>({});
   const cursorOpacity = useRef(new Animated.Value(1)).current;
+  const isFinishingRef = useRef(false);
+  const finishTestRef = useRef<() => void>(() => {});
+  const lastDisplayedSecondRef = useRef<number>(testDuration);
+  const lastAutoScrollWordRef = useRef<number>(-1);
 
   // --- Cursor Animation ---
   useEffect(() => {
@@ -111,40 +122,41 @@ const TypingTest = () => {
     if (testStatus !== "running") return;
 
     const currentWordIdx = getCurrentWordIndex();
+    if (currentWordIdx === lastAutoScrollWordRef.current) return;
+    lastAutoScrollWordRef.current = currentWordIdx;
     const targetY = wordYPositions.current[currentWordIdx];
 
     if (targetY !== undefined && scrollViewRef.current) {
       // Minimal scrolling logic: keep word in view with comfort offset
       scrollViewRef.current.scrollTo({
         y: Math.max(0, targetY - 120),
-        animated: true,
+        animated: false,
       });
     }
   }, [userInput, testStatus, getCurrentWordIndex]);
 
   // --- Compute character states whenever userInput changes ---
   useEffect(() => {
-    const states: CharacterState[] = [];
-    for (let i = 0; i < targetText.length; i++) {
-      if (i < userInput.length) {
-        states.push(userInput[i] === targetText[i] ? "correct" : "incorrect");
-      } else if (i === userInput.length) {
-        states.push("current");
-      } else {
-        states.push("untyped");
-      }
-    }
-    setCharacterStates(states);
-
+    const states: CharacterState[] = new Array(targetText.length).fill("untyped");
     let correct = 0;
     let incorrect = 0;
-    for (let i = 0; i < userInput.length; i++) {
-      if (userInput[i] === targetText[i]) {
-        correct++;
-      } else {
-        incorrect++;
+
+    for (let idx = 0; idx < targetText.length; idx++) {
+      if (idx < userInput.length) {
+        const isCorrect = userInput[idx] === targetText[idx];
+        states[idx] = isCorrect ? "correct" : "incorrect";
+        if (isCorrect) correct++;
+        else incorrect++;
+      } else if (idx === userInput.length) {
+        states[idx] = "current";
       }
     }
+
+    if (userInput.length > targetText.length) {
+      incorrect += userInput.length - targetText.length;
+    }
+
+    setCharacterStates(states);
     setCorrectCount(correct);
     setIncorrectCount(incorrect);
   }, [userInput, targetText]);
@@ -169,7 +181,10 @@ const TypingTest = () => {
   }, [testStatus, correctCount, userInput]);
 
   // --- Finish test and compute final stats ---
-  const finishTest = useCallback(() => {
+  const finishTest = useCallback(async () => {
+    if (isFinishingRef.current) return;
+    isFinishingRef.current = true;
+
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -177,9 +192,13 @@ const TypingTest = () => {
     const elapsed = startTimeRef.current
       ? (Date.now() - startTimeRef.current) / 1000
       : 0;
+
+    let finalWpm = 0;
+    let finalAccuracy = 100;
+
     if (elapsed > 0) {
-      const finalWpm = Math.round((correctCount / 5) / (elapsed / 60));
-      const finalAccuracy =
+      finalWpm = Math.round(correctCount / 5 / (elapsed / 60));
+      finalAccuracy =
         userInput.length > 0
           ? Math.round((correctCount / userInput.length) * 100)
           : 100;
@@ -187,14 +206,68 @@ const TypingTest = () => {
       setAccuracy(Math.max(0, Math.min(100, finalAccuracy)));
     }
     setTestStatus("finished");
-  }, [correctCount, userInput]);
+
+    try {
+      await saveTestResult(user?.uid ?? null, {
+        wpm: finalWpm,
+        accuracy: finalAccuracy,
+        correctCount,
+        incorrectCount,
+        testDuration,
+        isAnonymous,
+      });
+    } catch (error) {
+      console.error("Failed to save test result:", error);
+    }
+  }, [correctCount, userInput, user, testDuration, incorrectCount, isAnonymous]);
+
+  useEffect(() => {
+    finishTestRef.current = () => {
+      void finishTest();
+    };
+  }, [finishTest]);
+
+  // --- Timer ---
+  useEffect(() => {
+    if (testStatus !== "running") return;
+    if (!endTimeRef.current) return;
+
+    timerRef.current = setInterval(() => {
+      const msLeft = endTimeRef.current ? endTimeRef.current - Date.now() : 0;
+      const nextRemaining = Math.max(0, Math.ceil(msLeft / 1000));
+
+      if (nextRemaining !== lastDisplayedSecondRef.current) {
+        lastDisplayedSecondRef.current = nextRemaining;
+        setTimeRemaining(nextRemaining);
+      }
+
+      if (nextRemaining <= 0) {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        finishTestRef.current();
+      }
+    }, 250);
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [testStatus]);
 
   // --- Handle input change ---
   const handleInputChange = (text: string) => {
     if (testStatus === "finished") return;
 
     if (testStatus === "idle" && text.length > 0) {
-      startTimeRef.current = Date.now();
+      const now = Date.now();
+      startTimeRef.current = now;
+      endTimeRef.current = now + testDuration * 1000;
+      lastDisplayedSecondRef.current = testDuration;
+      lastAutoScrollWordRef.current = -1;
       setTestStatus("running");
     }
 
@@ -205,47 +278,9 @@ const TypingTest = () => {
     }
   };
 
-  // --- Timer ---
-  useEffect(() => {
-    if (testStatus === "running") {
-      timerRef.current = setInterval(() => {
-        setTimeRemaining((prev) => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current!);
-            timerRef.current = null;
-            setTestStatus("finished");
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [testStatus]);
-
-  // --- Final stats when finished ---
-  useEffect(() => {
-    if (testStatus !== "finished" || !startTimeRef.current) return;
-    const elapsed = (Date.now() - startTimeRef.current) / 1000;
-    if (elapsed > 0) {
-      const finalWpm = Math.round((correctCount / 5) / (elapsed / 60));
-      const finalAccuracy =
-        userInput.length > 0
-          ? Math.round((correctCount / userInput.length) * 100)
-          : 100;
-      setWpm(Math.max(0, finalWpm));
-      setAccuracy(Math.max(0, Math.min(100, finalAccuracy)));
-    }
-  }, [testStatus]);
-
   // --- Restart ---
   const handleRestart = () => {
+    isFinishingRef.current = false;
     setUserInput("");
     setCharacterStates([]);
     setTestStatus("idle");
@@ -255,6 +290,9 @@ const TypingTest = () => {
     setWpm(0);
     setAccuracy(100);
     startTimeRef.current = null;
+    endTimeRef.current = null;
+    lastDisplayedSecondRef.current = testDuration;
+    lastAutoScrollWordRef.current = -1;
     wordYPositions.current = {};
     setTargetWords(generateWords());
     inputRef.current?.focus();
@@ -269,6 +307,7 @@ const TypingTest = () => {
   const renderCharacter = (char: string, idx: number) => {
     const state = characterStates[idx] || "untyped";
     let charStyle: object = {};
+    let wrapperStyle: object = {};
 
     switch (state) {
       case "correct":
@@ -276,6 +315,10 @@ const TypingTest = () => {
         break;
       case "incorrect":
         charStyle = { color: theme.colors.error, textDecorationLine: "underline" };
+        // Add background for spaces to make them visible when incorrect
+        if (char === " ") {
+          wrapperStyle = { backgroundColor: theme.colors.error + "20" };
+        }
         break;
       case "current":
         charStyle = { color: theme.colors.onSurface };
@@ -289,7 +332,7 @@ const TypingTest = () => {
     const showCursor = idx === userInput.length;
 
     return (
-      <View key={idx} style={styles.charWrapper}>
+      <View key={idx} style={[styles.charWrapper, wrapperStyle]}>
         {showCursor && (
           <Animated.View
             style={[
@@ -314,18 +357,8 @@ const TypingTest = () => {
         return renderCharacter(char, globalIdx);
       });
       const spaceIdx = charOffset + word.length;
-      const spaceState = characterStates[spaceIdx] || "untyped";
-      const cursorOnSpace = spaceIdx === userInput.length;
-
-      let spaceStyle: object = { color: theme.colors.onSurfaceVariant };
-      if (spaceState === "correct") spaceStyle = { color: theme.colors.primary };
-      else if (spaceState === "incorrect")
-        spaceStyle = {
-          color: theme.colors.error,
-          backgroundColor: theme.colors.error + "20",
-        };
-
       charOffset = spaceIdx + 1;
+      
       return (
         <View
           key={wordIdx}
@@ -336,20 +369,7 @@ const TypingTest = () => {
           }}
         >
           {wordChars}
-          <View style={styles.charWrapper}>
-            {cursorOnSpace && (
-              <Animated.View
-                style={[
-                  styles.cursor,
-                  {
-                    backgroundColor: theme.colors.primary,
-                    opacity: cursorOpacity,
-                  },
-                ]}
-              />
-            )}
-            <Text style={[styles.char, spaceStyle]}> </Text>
-          </View>
+          {renderCharacter(" ", spaceIdx)}
         </View>
       );
     });
