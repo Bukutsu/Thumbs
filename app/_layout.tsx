@@ -1,10 +1,9 @@
-// app/_layout.tsx
 import { Stack } from "expo-router";
-import { PaperProvider } from "react-native-paper";
+import { ThemeProvider } from "../contexts/ThemeContext";
 
 const RootLayout = () => {
   return (
-    <PaperProvider>
+    <ThemeProvider>
       <Stack>
         <Stack.Screen
           name="(tabs)"
@@ -20,7 +19,7 @@ const RootLayout = () => {
           }}
         />
       </Stack>
-    </PaperProvider>
+    </ThemeProvider>
   );
 };
 
