@@ -1,48 +1,118 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-# dependencies
+# ======================
+# Dependencies
+# ======================
 node_modules/
 
-# Expo
+# ======================
+# Expo & Metro
+# ======================
 .expo/
 dist/
 web-build/
 expo-env.d.ts
-
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
 .metro-health-check*
 
-# debug
+# ======================
+# Native Projects
+# ======================
+# iOS
+ios/Pods/
+ios/build/
+ios/*.xcworkspace
+ios/*.xcuserstate
+*.xcuserstate
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Android
+.android/
+.gradle/
+.idea/
+local.properties
+*.iml
+*.hprof
+*.apk
+*.aab
+
+# Expo prebuild (generated native code)
+android/app/build/
+android/.gradle/
+ios/app/build/
+
+# ======================
+# Build Outputs
+# ======================
+build/
+out/
+
+# ======================
+# Debug
+# ======================
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+*.log
+*.tmp
 
+# ======================
+# Environment Variables
+# ======================
+.env
+.env.local
+.env.*.local
+
+# ======================
+# TypeScript
+# ======================
+*.tsbuildinfo
+
+# ======================
 # macOS
+# ======================
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
-
-# typescript
-*.tsbuildinfo
-
-# generated native folders
-/ios
-/android
-
-# AI
+# ======================
+# AI / Helpers
+# ======================
 GEMINI.md
 AGENTS.md
 
-# Private keys
+# ======================
+# Secrets & Keys
+# ======================
 private-keys/
+*.pem
+*.key
+config/firebase.ts
+config/*.ts
+*.credentials.json
+serviceAccount.json
+
+# ======================
+# Testing
+# ======================
+coverage/
+
+# ======================
+# Misc
+# ======================
+*.swp
+*.swo
+*~
